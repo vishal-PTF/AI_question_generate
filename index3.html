@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Data Example</title>
+</head>
+<body>
+    <h1>Streamed Data</h1>
+    <label for="prompt">Enter Prompt:</label>
+    <input type="text" id="prompt" name="prompt">
+    <button id="submitBtn">Submit</button>
+    <pre id="output"></pre>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const outputElement = document.getElementById('output');
+            const submitBtn = document.getElementById('submitBtn');
+            const promptInput = document.getElementById('prompt');
+
+            submitBtn.addEventListener('click', () => {
+                const prompt = promptInput.value;
+                fetchData(prompt);
+            });
+
+            const fetchData = async (prompt) => {
+                try {
+                    const response = await fetch('http://localhost:8000/api/generate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ prompt: prompt })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let accumulatedData = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        accumulatedData += decoder.decode(value, { stream: true });
+                        processStreamedData(accumulatedData);
+                    }
+
+                    // Process any remaining data
+                    processStreamedData(accumulatedData);
+
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    outputElement.textContent = `Error: ${error.message}`;
+                }
+            };
+
+            const processStreamedData = (data) => {
+                try {
+                    // Assuming data contains a series of valid JSON objects separated by newlines
+                    const jsonObjects = data.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line));
+                    jsonObjects.forEach(jsonObject => {
+                        outputElement.textContent += JSON.stringify(jsonObject, null, 2) + '\n';
+                    });
+                } catch (error) {
+                    console.error('Error processing streamed data:', error);
+                }
+            };
+        });
+    </script>
+</body>
+</html>

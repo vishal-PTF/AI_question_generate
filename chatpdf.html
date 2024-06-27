@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Genie</title>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+<style>
+  body {
+    background-color: #292929;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    padding: 20px;
+  }
+
+  h1 {
+    color: #00bcd4;
+  }
+
+  textarea, button, input[type="file"] {
+    margin-bottom: 10px;
+    border-radius: 5px;
+    border: none;
+    padding: 10px;
+    font-size: 16px;
+  }
+
+  textarea {
+    width: calc(100% - 20px);
+    resize: none;
+    background-color: #424242;
+    color: #fff;
+  }
+
+  button {
+    background-color: #00bcd4;
+    color: #fff;
+    cursor: pointer;
+  }
+
+  #responseDiv {
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #424242;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+</style>
+</head>
+<body>
+  <h1>New Genie</h1>
+  <textarea id="inputText" rows="4" cols="50" placeholder="Enter your prompt here"></textarea><br>
+  <input type="file" id="fileInput" accept=".pdf"><br>
+  <button onclick="sendRequest()">Submit</button><br><br>
+  <span id="responseDiv" style="display:block" class="note" markdown="1"></span>
+  <script>
+    async function sendRequest() {
+        const prompt = document.getElementById('inputText').value.trim();
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+
+        if (!prompt && !file) {
+            alert('Please enter a prompt or upload a PDF file');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('prompt', prompt);
+        if (file) {
+            formData.append('file', file);
+        }
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/api/generate', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const responseDiv = document.getElementById("responseDiv");
+            responseDiv.innerHTML = ''; // Clear previous responses
+
+            const md = window.markdownit();
+            let accumulatedResponse = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = new TextDecoder().decode(value);
+                accumulatedResponse += chunk;
+
+                // Log accumulatedResponse to check its content
+                console.log('Accumulated Response:', accumulatedResponse);
+
+                // Attempt to parse accumulatedResponse as JSON
+                let responseObject;
+                try {
+                    responseObject = JSON.parse(accumulatedResponse);
+                } catch (error) {
+                    console.error('Error parsing JSON:', error);
+                    continue; // Skip processing this chunk if JSON parsing fails
+                }
+
+                // Check the response format and dynamically define object based on it
+                let objectToDisplay;
+
+                if (responseObject && responseObject.MCQs) {
+                    // Define object for MCQs format
+                    objectToDisplay = {
+                        type: 'MCQs',
+                        data: responseObject.MCQs
+                    };
+                } else if (responseObject && responseObject.text) {
+                    // Define object for text format
+                    objectToDisplay = {
+                        type: 'Text',
+                        data: responseObject.text
+                    };
+                } else if (responseObject && responseObject.questions) {
+                    // Define object for questions format
+                    objectToDisplay = {
+                        type: 'Questions',
+                        data: responseObject.questions
+                    };
+                } else {
+                    // Handle unrecognized format or unexpected response
+                    console.error('Unrecognized response format:', responseObject);
+                    responseDiv.innerHTML += `<p>Unrecognized response format</p>`;
+                    break;
+                }
+
+                // Display the object based on its type
+                switch (objectToDisplay.type) {
+                    case 'MCQs':
+                        objectToDisplay.data.forEach(mcq => {
+                            try {
+                                const { question, options, correct_answer } = mcq;
+
+                                // Construct HTML for displaying the question and options
+                                let html = `<p><strong>${question}</strong></p>`;
+                                options.forEach(option => {
+                                    html += `<p>${option}</p>`;
+                                });
+                                html += `<p><em>Correct answer: ${correct_answer}</em></p>`;
+
+                                responseDiv.innerHTML += html + '<br>';
+
+                            } catch (error) {
+                                console.error('Error processing MCQ:', error);
+                            }
+                        });
+                        break;
+                    case 'Text':
+                        responseDiv.innerHTML += `<p>${objectToDisplay.data}</p>`;
+                        break;
+                    case 'Questions':
+                        objectToDisplay.data.forEach(questionObj => {
+                            try {
+                                const { question, options, correct_answer } = questionObj;
+
+                                // Construct HTML for displaying the question and options
+                                let html = `<p><strong>${question}</strong></p>`;
+                                options.forEach(option => {
+                                    html += `<p>${option}</p>`;
+                                });
+                                html += `<p><em>Correct answer: ${correct_answer}</em></p>`;
+
+                                responseDiv.innerHTML += html + '<br>';
+
+                            } catch (error) {
+                                console.error('Error processing question:', error);
+                            }
+                        });
+                        break;
+                    default:
+                        console.error('Unsupported object type:', objectToDisplay.type);
+                        break;
+                }
+
+                // Clear accumulatedResponse after processing
+                accumulatedResponse = '';
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+  </script>
+</body>
+</html>

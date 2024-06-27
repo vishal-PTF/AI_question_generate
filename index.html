@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API</title>
+</head>
+<body>
+    <h1>Test API</h1>
+    <div>
+        <label for="prompt">Enter Prompt:</label><br>
+        <textarea id="prompt" rows="5" cols="50"></textarea><br><br>
+        <button onclick="sendPrompt()">Generate Responses</button>
+    </div>
+    <div id="responses">
+        <!-- Response will be displayed here -->
+    </div>
+
+    <script>
+        async function sendPrompt() {
+            const prompt = document.getElementById('prompt').value.trim();
+
+            if (!prompt) {
+                alert('Please enter a prompt');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                let decoder = new TextDecoder('utf-8');
+                let accumulatedResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    accumulatedResponse += decoder.decode(value, { stream: true });
+
+                    let jsonStartIndex = accumulatedResponse.indexOf('{');
+                    let jsonEndIndex = accumulatedResponse.lastIndexOf('}') + 1;
+
+                    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+                        const jsonString = accumulatedResponse.slice(jsonStartIndex, jsonEndIndex);
+                        accumulatedResponse = accumulatedResponse.slice(jsonEndIndex);
+
+                        try {
+                            const parsedData = JSON.parse(jsonString);
+                            displayResponse(parsedData);
+                        } catch (error) {
+                            console.error('Error parsing JSON:', error, jsonString);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
+        function displayResponse(response) {
+            const responseDiv = document.getElementById('responses');
+            const question = response.question || '';
+            const options = response.options || [];
+            const correctAnswer = response.correct_answer || '';
+
+            const questionElement = document.createElement('p');
+            questionElement.textContent = `Question: ${question}`;
+            responseDiv.appendChild(questionElement);
+
+            const optionsList = document.createElement('ul');
+            options.forEach((option, index) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Option ${String.fromCharCode(65 + index)}: ${option}`;
+                optionsList.appendChild(listItem);
+            });
+            responseDiv.appendChild(optionsList);
+
+            const correctAnswerElement = document.createElement('p');
+            correctAnswerElement.textContent = `Correct Answer: ${correctAnswer}`;
+            responseDiv.appendChild(correctAnswerElement);
+
+            const hr = document.createElement('hr');
+            responseDiv.appendChild(hr);
+        }
+    </script>
+</body>
+</html>
